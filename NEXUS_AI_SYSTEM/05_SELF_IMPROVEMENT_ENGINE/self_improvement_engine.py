@@ -27,30 +27,10 @@ class SelfImprovementEngine:
             self.logger.log("Analysis yielded no files to process. Ending cycle.")
             return
 
-        # 2. Synthèse (avec une proposition de changement simulée pour le test)
-        # Normalement, cette partie utiliserait un LLM pour générer une proposition.
-        # Ici, nous allons simuler une proposition qui ajoute un commentaire au fichier de logging.
-        
-        # En premier, nous lisons le contenu du fichier pour ne pas l'écraser
-        try:
-            log_file_path = "NEXUS_AI_SYSTEM/utils/logging.py"
-            with open(log_file_path, 'r') as f:
-                original_content = f.read()
-            
-            # On ajoute notre commentaire de test
-            new_content = original_content + "\n# Test comment from self-improvement cycle."
-
-            # On crée la proposition
-            proposed_solution = {
-                "action": "REPLACE_FILE_CONTENT",
-                "file_path": log_file_path,
-                "new_content": new_content,
-                "reason": "TEST: Validate the full improvement loop."
-            }
-            self.logger.log(f"Synthesized a test proposal: {proposed_solution['reason']}")
-
-        except FileNotFoundError:
-            self.logger.log(f"Could not find file to modify: {log_file_path}. Ending cycle.", level="error")
+        # 2. Synthèse avec le LLM
+        proposed_solution = self.synthesis_engine.synthesize_solution(analysis_results)
+        if not proposed_solution:
+            self.logger.log("Synthesis failed to produce a solution. Ending cycle.")
             return
 
         # 3. Réécriture
