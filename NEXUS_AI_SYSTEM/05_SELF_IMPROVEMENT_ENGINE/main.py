@@ -1,64 +1,78 @@
-
-from NEXUS_AI_SYSTEM.src.nexus_ai_system.ai_system.main import AISystem
+import time
+from NEXUS_AI_SYSTEM.self_improvement_engine.code_analyzer.code_analysis_engine import CodeAnalysisEngine
+from NEXUS_AI_SYSTEM.self_improvement_engine.synthesis.synthesis_engine import SynthesisEngine
+from NEXUS_AI_SYSTEM.self_improvement_engine.rewriting.rewriting_engine import RewritingEngine
+from NEXUS_AI_SYSTEM.self_improvement_engine.automated_evaluation.evaluation_engine import EvaluationEngine
+from NEXUS_AI_SYSTEM.self_improvement_engine.safe_integration.integration_engine import IntegrationEngine
+from NEXUS_AI_SYSTEM.utils.logging import Logger
 
 class SelfImprovementEngine:
-    def __init__(self, ai_system: AISystem):
-        self.ai_system = ai_system
-        self.logger = self.ai_system.logger
-        self.config = self.ai_system.config
-        self.path_manager = self.ai_system.path_manager
+    def __init__(self, project_root):
+        self.project_root = project_root
+        self.logger = Logger("SelfImprovementEngine")
+        self.code_analyzer = CodeAnalysisEngine(self)
+        self.synthesis_engine = SynthesisEngine(self)
+        self.rewriting_engine = RewritingEngine(self)
+        self.evaluation_engine = EvaluationEngine(self)
+        self.integration_engine = IntegrationEngine(self)
+        self.improvement_cycles = 0
 
-        self.code_analysis_engine = None
-        self.web_research_engine = None
-        self.synthesis_engine = None
-        self.rewriting_engine = None
+    def run_improvement_cycle(self):
+        '''
+        Exécute un cycle complet d'auto-amélioration.
+        1. Analyse le code pour identifier les axes d'amélioration.
+        2. Synthétise une solution (nouveau code).
+        3. Réécrit le code avec la solution proposée.
+        4. Évalue la nouvelle version.
+        5. Intègre la solution si l'évaluation est positive.
+        '''
+        self.improvement_cycles += 1
+        self.logger.log(f"--- Starting Self-Improvement Cycle #{self.improvement_cycles} ---")
 
-    def initialize(self):
-        """
-        Initializes the Self-Improvement Engine and its sub-components.
-        """
-        self.logger.log("Initializing Self-Improvement Engine...")
-        # Initialize sub-components here
-        # self.code_analysis_engine = CodeAnalysisEngine(self)
-        # self.web_research_engine = WebResearchEngine(self)
-        # self.synthesis_engine = SynthesisEngine(self)
-        # self.rewriting_engine = RewritingEngine(self)
-        self.logger.log("Self-Improvement Engine initialized.")
+        try:
+            # 1. Analyse
+            analysis_results = self.code_analyzer.analyze_codebase()
+            if not analysis_results:
+                self.logger.log("Analysis did not yield any improvement targets. Ending cycle.")
+                return
 
-    def improve_code(self, file_path, user_feedback=None):
-        """
-        Improves a given code file based on analysis and user feedback.
-        """
-        self.logger.log(f"Starting code improvement for file: {file_path}")
+            # 2. Synthèse
+            proposed_solution = self.synthesis_engine.synthesize_solution(analysis_results)
+            if not proposed_solution:
+                self.logger.log("Synthesis did not produce a viable solution. Ending cycle.")
+                return
 
-        # 1. Analyze the code
-        analysis_results = self.code_analysis_engine.analyze_code(file_path)
-        
-        # 2. Research for improvements (if necessary)
-        # This could be triggered by analysis results or user feedback
-        research_findings = None
-        if "some_trigger_condition" in analysis_results:
-            research_findings = self.web_research_engine.conduct_research(analysis_results["some_trigger_condition"])
+            # 3. Réécriture
+            patch = self.rewriting_engine.apply_changes(proposed_solution)
+            if not patch:
+                self.logger.log("Code rewriting failed. Ending cycle.")
+                return
 
-        # 3. Synthesize a solution
-        proposed_changes = self.synthesis_engine.synthesize_solution(analysis_results, research_findings, user_feedback)
+            # 4. Évaluation
+            evaluation_passed = self.evaluation_engine.evaluate_changes(patch)
+            if not evaluation_passed:
+                self.logger.log("Evaluation failed. Rolling back changes.")
+                self.rewriting_engine.rollback_changes(patch)
+                return
 
-        # 4. Rewrite the code
-        self.rewriting_engine.rewrite_code(file_path, proposed_changes)
+            # 5. Intégration
+            self.integration_engine.integrate_changes(patch, self.improvement_cycles)
+            self.logger.log(f"--- Successfully Completed Self-Improvement Cycle #{self.improvement_cycles} ---")
 
-        self.logger.log(f"Code improvement completed for file: {file_path}")
+        except Exception as e:
+            self.logger.log(f"Error during improvement cycle: {e}", level="error")
+            # En cas d'erreur, on pourrait envisager un rollback plus robuste ici.
 
-    def run_self_improvement_cycle(self):
-        """
-        Runs a full self-improvement cycle on the entire codebase.
-        """
-        self.logger.log("Starting self-improvement cycle...")
-        
-        # Get all relevant code files
-        code_files = self.path_manager.get_all_code_files()
+    def start(self, interval_seconds=3600):
+        '''Démarre la boucle d'auto-amélioration continue.'''
+        self.logger.log("Self-Improvement Engine starting...")
+        while True:
+            self.run_improvement_cycle()
+            self.logger.log(f"Next improvement cycle in {interval_seconds} seconds.")
+            time.sleep(interval_seconds)
 
-        for file_path in code_files:
-            self.improve_code(file_path)
-
-        self.logger.log("Self-improvement cycle completed.")
-
+if __name__ == '__main__':
+    # Ceci est un exemple de la façon dont le moteur pourrait être démarré.
+    # Le point d'entrée réel sera probablement dans le main.py racine du projet.
+    engine = SelfImprovementEngine(project_root=".")
+    engine.start(interval_seconds=60) # Intervalle court pour le débogage
