@@ -1,0 +1,24 @@
+# --- NEXUS_AI_SYSTEM/data/corpus.txt ---
+
+L'intelligence artificielle est un domaine de recherche fascinant.
+Les modèles de langage, ou Large Language Models (LLMs), sont au cœur de cette révolution technologique.
+Ils sont entraînés sur de vastes corpus de données textuelles pour apprendre les subtilités du langage naturel.
+L'objectif de NEXUS-AI est de concevoir un système capable non seulement d'apprendre à partir de ces données, mais aussi d'améliorer de manière autonome sa propre architecture et ses algorithmes.
+
+Le processus d'entraînement est coûteux en calculs et nécessite souvent des accélérateurs matériels comme les GPU (Graphics Processing Units) ou les TPU (Tensor Processing Units).
+La qualité du jeu de données est primordiale pour obtenir un modèle performant.
+
+Voici un exemple de code Python que le modèle pourrait apprendre à générer :
+
+import torch
+from torch import nn
+
+class SimpleNet(nn.Module):
+    def __init__(self, vocab_size, embed_size):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+    
+    def forward(self, input_ids):
+        return self.embedding(input_ids)
+
+# Fin du corpus de test.

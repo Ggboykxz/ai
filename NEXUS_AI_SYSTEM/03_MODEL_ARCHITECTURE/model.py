@@ -2,113 +2,105 @@
 # --- NEXUS_AI_SYSTEM/03_MODEL_ARCHITECTURE/model.py ---
 
 import torch
-import torch.nn as nn
-from typing import List, Optional, Tuple
+from torch import nn
 
-# Références aux composants du modèle
-from NEXUS_AI_SYSTEM.03_MODEL_ARCHITECTURE.core.model_config import ModelConfig
-from NEXUS_AI_SYSTEM.03_MODEL_ARCHITECTURE.embeddings import NexusEmbedding
-from NEXUS_AI_SYSTEM.03_MODEL_ARCHITECTURE.transformer import NexusTransformerBlock, NexusRMSNorm
-
-class NexusModel(nn.Module):
-    """
-    Le modèle Transformer principal, sans la tête de classification.
-    Orchestre l'embedding et l'empilement des blocs Transformer.
-    """
-    def __init__(self, config: ModelConfig):
-        super().__init__()
-        self.config = config
-        
-        # Couche d'embedding des tokens
-        self.embed_tokens = NexusEmbedding(config)
-        
-        # Empilement des blocs Transformer
-        self.layers = nn.ModuleList([NexusTransformerBlock(config) for _ in range(config.num_hidden_layers)])
-        
-        # Normalisation finale après les blocs
-        self.norm = NexusRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
-    def forward(
-        self, 
-        input_ids: torch.LongTensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-    ) -> torch.Tensor:
-        
-        hidden_states = self.embed_tokens(input_ids)
-        
-        # Itération à travers les blocs Transformer
-        for decoder_layer in self.layers:
-            hidden_states = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-            )
-            
-        # Normalisation finale
-        hidden_states = self.norm(hidden_states)
-        
-        return hidden_states
+from .core.model_config import ModelConfig
+from .transformer.transformer_block import NexusTransformerBlock
 
 class NexusForCausalLM(nn.Module):
     """
-    Le modèle Nexus complet pour la modélisation de langage causal (Causal LM).
-
-    Cette classe intègre le `NexusModel` et ajoute une tête de classification
-    pour produire les logits de prédiction du prochain token.
+    L'architecture principale du modèle Nexus, assemblant les différents composants.
     """
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.model = NexusModel(config)
         self.config = config
 
-        # Tête de classification pour la modélisation du langage
-        # Les poids peuvent être partagés avec les embeddings de token
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        # Couche d'embedding des tokens
+        self.token_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
 
-    def get_input_embeddings(self) -> nn.Module:
-        return self.model.embed_tokens
-
-    def set_input_embeddings(self, value: nn.Module):
-        self.model.embed_tokens = value
-        
-    def get_output_embeddings(self) -> nn.Module:
-        return self.lm_head
-
-    def set_output_embeddings(self, new_embeddings: nn.Module):
-        self.lm_head = new_embeddings
-
-    def forward(
-        self, 
-        input_ids: torch.LongTensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-    ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
-        """
-        Passe avant complète, incluant le calcul de la perte si les `labels` sont fournis.
-        """
-        # 1. Obtenir les états cachés du modèle de base
-        hidden_states = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
+        # Blocs Transformer empilés
+        self.transformer_blocks = nn.ModuleList(
+            [NexusTransformerBlock(config) for _ in range(config.num_hidden_layers)]
         )
 
-        # 2. Calculer les logits
+        # Tête de modélisation du langage (prédit le prochain token)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None):
+        """
+        Passe avant du modèle.
+
+        Args:
+            input_ids (torch.Tensor): Les IDs des tokens d'entrée (batch_size, seq_length).
+            labels (torch.Tensor, optional): Les IDs des tokens cibles pour le calcul de la perte (batch_size, seq_length).
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: La perte (si labels est fourni) et les logits.
+        """
+        batch_size, seq_length = input_ids.shape
+        device = input_ids.device
+
+        # 1. Obtenir les embeddings
+        hidden_states = self.token_embeddings(input_ids)
+
+        # 2. Passer à travers les blocs Transformer
+        for block in self.transformer_blocks:
+            hidden_states = block(hidden_states)
+
+        # 3. Calculer les logits avec la tête de modélisation
         logits = self.lm_head(hidden_states)
 
-        # 3. Calculer la perte (si les labels sont fournis)
+        # 4. Calculer la perte si les étiquettes sont fournies
         loss = None
         if labels is not None:
-            # Décaler les logits et les labels pour la prédiction du prochain token
+            # Aplatir les logits et les étiquettes pour le calcul de la perte
+            # On veut prédire le prochain token, donc on décale les logits et les labels
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            
-            # Utiliser CrossEntropyLoss pour calculer la perte
+
             loss_fct = nn.CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
         return loss, logits
+    
+    def count_parameters(self):
+        """Compte le nombre total de paramètres dans le modèle."""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    @torch.no_grad()
+    def generate(self, input_ids: torch.Tensor, max_new_tokens: int, temperature: float = 1.0):
+        """
+        Génère une séquence de tokens de manière autorégressive.
+
+        Args:
+            input_ids (torch.Tensor): Le prompt d'entrée (batch_size, seq_length).
+            max_new_tokens (int): Le nombre maximum de nouveaux tokens à générer.
+            temperature (float): Contrôle le caractère aléatoire. 1.0 = pas de changement.
+                                 < 1.0 rend la sortie plus déterministe (greedy).
+                                 > 1.0 la rend plus aléatoire.
+
+        Returns:
+            torch.Tensor: La séquence de tokens complétée.
+        """
+        self.eval() # Mettre le modèle en mode évaluation
+        generated_ids = input_ids
+
+        for _ in range(max_new_tokens):
+            # Ne considérer que la fenêtre de contexte maximale
+            input_ids_cond = generated_ids[:, -self.config.block_size:]
+
+            # Passe avant pour obtenir les logits pour le dernier token
+            _, logits = self(input_ids_cond)
+            last_token_logits = logits[:, -1, :] / temperature
+
+            # Appliquer softmax pour obtenir les probabilités
+            probs = torch.nn.functional.softmax(last_token_logits, dim=-1)
+
+            # Échantillonner le prochain token
+            next_token_id = torch.multinomial(probs, num_samples=1)
+
+            # Ajouter le nouveau token à la séquence générée
+            generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+
+        self.train() # Remettre le modèle en mode entraînement
+        return generated_ids
