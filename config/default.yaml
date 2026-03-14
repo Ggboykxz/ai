@@ -1,0 +1,17 @@
+model:
+  name: nexus-ai
+  parameters: "[à venir]"
+  layers: "[à venir]"
+  heads: "[à venir]"
+  context_length: "[à venir]"
+
+training:
+  optimizer: adamw
+  learning_rate: 3e-4
+  batch_size: "[à venir]"
+
+self_improvement:
+  enabled: true
+  interval_seconds: 3600
+  web_search: true
+  rollback_on_regression: true
